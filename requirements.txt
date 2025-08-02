@@ -1,0 +1,6 @@
+requests==2.31.0
+beautifulsoup4==4.12.3
+faiss-cpu==1.7.4
+sentence-transformers==2.6.1
+scikit-learn==1.4.2
+numpy==1.26.4
