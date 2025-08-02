@@ -1,0 +1,27 @@
+{
+  "aimaggie.com": {
+    "mandatory_pages": [
+      "/",
+      "/about",
+      "/contact"
+    ],
+    "exclude_pages": [
+      "/privacy",
+      "/terms"
+    ],
+    "instructions": "Focar em conteúdos educativos e descritivos. Ignorar páginas legais.",
+    "key": "aimaggie"
+  },
+
+  "exemplo.org": {
+    "mandatory_pages": [
+      "/",
+      "/servicos"
+    ],
+    "exclude_pages": [
+      "/cookies"
+    ],
+    "instructions": "Crawlear apenas páginas com conteúdo original.",
+    "key": "exemplo"
+  }
+}
