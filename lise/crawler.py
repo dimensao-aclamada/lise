@@ -4,7 +4,7 @@ import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin, urlparse
 
-def crawl_website(base_url, max_pages=10):
+def crawl_website(base_url, must_include=None, must_exclude=None, max_pages=10):
     """Crawls a website and returns a list of (url, text content)"""
     visited = set()
     to_visit = [base_url]

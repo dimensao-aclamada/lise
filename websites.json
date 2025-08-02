@@ -1,5 +1,5 @@
 {
-  "aimaggie.com": {
+  "mysitefaster.com": {
     "mandatory_pages": [
       "/",
       "/about",
@@ -10,7 +10,7 @@
       "/terms"
     ],
     "instructions": "Focar em conteúdos educativos e descritivos. Ignorar páginas legais.",
-    "key": "aimaggie"
+    "key": "mysitefaster"
   },
 
   "exemplo.org": {
