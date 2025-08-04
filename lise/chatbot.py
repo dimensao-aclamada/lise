@@ -62,11 +62,12 @@ def answer_with_datasource(data_source: str, query: str) -> str:
     index_path = os.path.join(INDEX_DIR, f"{data_source}.index")
     chunks_path = os.path.join(INDEX_DIR, f"{data_source}_chunks.json")
 
-    # Check if the indexed data exists
+    # Check for the data and raise a specific error if not found
     if not os.path.exists(index_path):
-        # Raise an error that the API can catch
-        raise FileNotFoundError(f"Data source '{data_source}' has not been indexed. Run 'python manage.py crawl {data_source}' first.")
-
+        raise FileNotFoundError(
+            f"Data source '{data_source}' has not been indexed. "
+            f"Run 'python manage.py crawl {data_source}' first."
+        )
     # Load the persistent index and chunks
     rag = RAGIndex()
     rag.load_index(index_path, chunks_path)
