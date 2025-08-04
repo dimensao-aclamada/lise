@@ -1,27 +1,10 @@
 {
-  "mysitefaster.com": {
+  "mysitefaster": {
+    "website": "mysitefaster.com",
     "mandatory_pages": [
-      "/",
-      "/about",
-      "/contact"
+      "/"
     ],
-    "exclude_pages": [
-      "/privacy",
-      "/terms"
-    ],
-    "instructions": "Focar em conteúdos educativos e descritivos. Ignorar páginas legais.",
-    "key": "mysitefaster"
-  },
-
-  "exemplo.org": {
-    "mandatory_pages": [
-      "/",
-      "/servicos"
-    ],
-    "exclude_pages": [
-      "/cookies"
-    ],
-    "instructions": "Crawlear apenas páginas com conteúdo original.",
-    "key": "exemplo"
+    "exclude_pages": [],
+    "instructions": "ignore legal pages. consider pages in portuguese only"
   }
 }

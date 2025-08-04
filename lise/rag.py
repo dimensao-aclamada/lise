@@ -1,6 +1,6 @@
 # rag.py
 
-from lise.lise.config import CHUNK_SIZE, CHUNK_OVERLAP, EMBED_MODEL
+from lise.config import CHUNK_SIZE, CHUNK_OVERLAP, EMBED_MODEL
 from sentence_transformers import SentenceTransformer
 from sklearn.feature_extraction.text import TfidfVectorizer
 import faiss
