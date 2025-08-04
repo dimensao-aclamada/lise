@@ -1,10 +1,10 @@
 {
-  "mysitefaster": {
-    "website": "mysitefaster.com",
+  "marketividade": {
+    "website": "marketividade.com",
     "mandatory_pages": [
       "/"
     ],
     "exclude_pages": [],
-    "instructions": "ignore legal pages. consider pages in portuguese only"
+    "instructions": "Default crawl. No specific instruction."
   }
 }

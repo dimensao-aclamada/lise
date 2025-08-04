@@ -1,32 +1,32 @@
 # api.py
 
-# File header
-# api.py
-
 from fastapi import FastAPI, Query, HTTPException
-from fastapi.responses import JSONResponse
 from lise.chatbot import answer_with_datasource
 
-app = FastAPI(title="Chatbot API", version="1.0")
+app = FastAPI(
+    title="Chatbot API",
+    version="1.0",
+    description="API to chat with data from pre-indexed websites."
+)
 
 @app.get("/ask")
 def ask(
-    data_source: str = Query(..., description="The registered data source key"),
-    query: str = Query(..., description="User's natural language question")
+    data_source: str = Query(..., description="The key of the pre-indexed data source (e.g., 'mysite')."),
+    query: str = Query(..., description="The user's natural language question.")
 ):
     """
-    Read-only chatbot API to answer queries using a registered data source.
-    
-    Parameters:
-    - data_source: Key in websites.json (e.g., 'mysitefaster')
-    - query: The natural language question
-
-    Returns:
-    - JSON with assistant's reply
+    Answers a query using a pre-indexed data source.
     """
     try:
-        return {"response": answer_with_datasource(data_source, query)}
+        response = answer_with_datasource(data_source, query)
+        return {"response": response}
+    except FileNotFoundError as e:
+        # If the index doesn't exist, return a helpful 404 error
+        raise HTTPException(status_code=404, detail=str(e))
     except RuntimeError as e:
+        # Handle the rate-limiting error from the chatbot
         raise HTTPException(status_code=429, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail="Internal Server Error")
+        # Generic error for other issues
+        print(f"An unexpected error occurred: {e}") # Log the error for debugging
+        raise HTTPException(status_code=500, detail="An internal server error occurred.")
