@@ -6,6 +6,7 @@ GROQ_MODEL = "llama3-8b-8192"
 # Load environment variables
 load_dotenv()
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+MY_API_KEY = os.getenv("MY_API_KEY") # New: Your API key for this service
 
 
 EMBED_MODEL = "sentence-transformers/all-MiniLM-L6-v2"  # HuggingFace

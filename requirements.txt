@@ -1,11 +1,12 @@
-# Core packages (from your list)
+# Core packages
 requests==2.31.0
 beautifulsoup4==4.12.3
-faiss-cpu==1.7.4
 sentence-transformers==2.6.1
 scikit-learn==1.4.2
 numpy==1.26.4
 
-# Added for API support
-fastapi==0.111.0
-uvicorn==0.29.0
+# Added for API and environment variable support
+Flask==3.0.3
+python-dotenv==1.0.1
+uvicorn==0.30.0
+starlette==0.37.2 # Added for WSGIMiddleware
