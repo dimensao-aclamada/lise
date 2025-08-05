@@ -6,8 +6,8 @@ import argparse
 from urllib.parse import urlparse
 
 # Assuming your project structure allows this import
-from lise.crawler import crawl_website
-from lise.rag import RAGIndex
+from crawler import crawl_website
+from rag import RAGIndex
 
 CONFIG_FILE = "websites.json"
 CHUNKS_DIR = "website_chunks"

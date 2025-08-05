@@ -1,6 +1,51 @@
+# Byte-compiled / optimized / DLL files
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Environment
 .env
-*.faiss
-*.DS_Store
+.venv
+env/
+venv/
+ENV/
+env.bak
+venv.bak
+
+# Cache and temporary files
 .cache/
+*.DS_Store
+.pytest_cache/
+
+# RAG Indexes and Data
+# These are large, generated files and should not be in version control.
+# They can be rebuilt using 'python manage.py crawl <name>'
+rag_indexes/
+
+# Deprecated chunk directory (if it still exists from old versions)
+website_chunks/
