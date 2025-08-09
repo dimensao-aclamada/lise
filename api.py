@@ -1,37 +1,23 @@
-# api.py (Corrected Version)
+# api.py (Updated for per-source keys)
 
 import uuid
 import json
 import os
-from fastapi import FastAPI, HTTPException, Depends, status, Header
+import secrets  # Required for timing-safe key comparison
+from fastapi import FastAPI, HTTPException, status, Header
 from pydantic import BaseModel
 from typing import Optional
 
 from lise.chatbot import GroqChatbot, RAGIndex
 from dotenv import load_dotenv
 
-# --- Configuration Loading ---
-load_dotenv()
-API_KEY = os.getenv("MY_API_KEY")
-if not API_KEY:
-    raise RuntimeError("MY_API_KEY is not set in the .env file.")
-
+# --- Configuration ---
+load_dotenv() # Still needed for GROQ_API_KEY inside the chatbot module
 CONFIG_FILE = "websites.json"
 INDEX_DIR = "rag_indexes"
 
 # --- In-Memory Session Store ---
-# Warning: This is for demonstration only. It will not work across multiple server processes.
 chatbots = {}
-
-# --- Security Dependency ---
-# This is the corrected dependency function.
-# It now explicitly looks for a header named "X-API-Key".
-async def verify_api_key(x_api_key: str = Header(..., description="dcdsc897sdc87sd9c87sd9c87s9d8csdhc9ds8c8")):
-    if x_api_key != API_KEY:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or missing API Key"
-        )
 
 # --- Data Models ---
 class AnswerRequest(BaseModel):
@@ -49,59 +35,57 @@ app = FastAPI(
     description="An API for chatting with RAG-indexed data sources."
 )
 
+def get_config():
+    """Helper to load the websites config."""
+    if not os.path.exists(CONFIG_FILE):
+        return {}
+    with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+        return json.load(f)
+
 @app.post("/api/answer", response_model=AnswerResponse)
 async def get_answer(
     request: AnswerRequest,
-    # The dependency is now a parameter of the function itself, which is cleaner.
-    _api_key: None = Depends(verify_api_key)
+    x_api_key: str = Header(..., description="The API key for the specific data source.")
 ):
     """
-    Get an answer from a data source. Start or continue a conversation.
+    Get an answer from a data source. The API key must match the one
+    assigned to the requested data_source.
     """
-    try:
-        data_source = request.data_source
-        query = request.query
-        conversation_id = request.conversation_id
+    config = get_config()
+    data_source_name = request.data_source
+    
+    # --- Security Validation ---
+    if data_source_name not in config:
+        raise HTTPException(status_code=404, detail=f"Data source '{data_source_name}' not found.")
+        
+    source_config = config[data_source_name]
+    expected_key = source_config.get("api_key")
+    
+    if not expected_key or not secrets.compare_digest(x_api_key, expected_key):
+        raise HTTPException(status_code=401, detail="Invalid API Key for this data source.")
 
+    # --- Main Logic ---
+    try:
+        conversation_id = request.conversation_id
         if conversation_id and conversation_id in chatbots:
-            # Continue existing conversation
             bot = chatbots[conversation_id]
         else:
-            # Start a new conversation
             conversation_id = str(uuid.uuid4())
-            print(f"Starting new conversation: {conversation_id}")
-
-            index_path = os.path.join(INDEX_DIR, f"{data_source}.index")
+            index_path = os.path.join(INDEX_DIR, f"{data_source_name}.index")
             if not os.path.exists(index_path):
-                raise FileNotFoundError(f"Data source '{data_source}' has not been indexed.")
+                raise FileNotFoundError() # Caught below
 
-            chunks_path = os.path.join(INDEX_DIR, f"{data_source}_chunks.json")
+            chunks_path = os.path.join(INDEX_DIR, f"{data_source_name}_chunks.json")
             rag = RAGIndex()
             rag.load_index(index_path, chunks_path)
-            
-            # Create a new bot with history enabled and store it
             bot = GroqChatbot(rag, enable_history=True)
             chatbots[conversation_id] = bot
 
-        # Generate the answer
-        answer = bot.generate_reply(query)
-
+        answer = bot.generate_reply(request.query)
         return AnswerResponse(answer=answer, conversation_id=conversation_id)
 
-    except FileNotFoundError as e:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail=f"Index for '{data_source_name}' not found. Please crawl it first.")
     except Exception as e:
-        # It's good practice to log the actual error for debugging
-        print(f"An unexpected error occurred: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An internal server error occurred."
-        )
-
-# Optional: Endpoint to list available data sources
-@app.get("/api/sources", response_model=list[str])
-async def get_available_data_sources(_api_key: None = Depends(verify_api_key)):
-    if not os.path.exists(CONFIG_FILE):
-        return []
-    with open(CONFIG_FILE, "r", encoding="utf-8") as f:
-        config = json.load(f)
-    return list(config.keys())
+        print(f"An unexpected error occurred: {e}") # For server-side debugging
+        raise HTTPException(status_code=500, detail="An internal server error occurred.")

@@ -4,8 +4,7 @@ import os
 import json
 import argparse
 from urllib.parse import urlparse
-
-# Assuming your project structure allows this import
+import secrets  
 from crawler import crawl_website
 from rag import RAGIndex
 
@@ -51,7 +50,10 @@ def add_data_source(name: str, url: str):
     if name in config:
         print(f"Error: Data source '{name}' already exists.")
         return
-
+    
+    # Generate a new, secure API key
+    new_api_key = secrets.token_hex(32)
+    
     config[name] = {
         "website": clean_domain,
         "mandatory_pages": ["/"],
@@ -59,9 +61,15 @@ def add_data_source(name: str, url: str):
         "instructions": "Default crawl. No specific instruction."
     }
     save_websites_config(config)
-    print(f"Data source '{name}' for website '{clean_domain}' added to {CONFIG_FILE}.")
-    print(f"Next, run 'python manage.py crawl {name}' to build its index.")
-
+       # --- IMPORTANT: Show the key to the user ---
+    print("-" * 60)
+    print(f"Data source '{name}' for website '{clean_domain}' added.")
+    print("\nIMPORTANT: This is the only time your API key will be displayed.")
+    print("Please save it securely.")
+    print(f"\n  API Key for '{name}': {new_api_key}")
+    print("-" * 60)
+    print(f"\nNext, run 'python manage.py crawl {name}' to build its index.")
+    
 def crawl_and_index(name: str):
     """Crawls a website and builds a persistent RAG index."""
     config = load_websites_config()

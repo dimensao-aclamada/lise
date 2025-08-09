@@ -14,5 +14,13 @@
     ],
     "exclude_pages": [],
     "instructions": "Default crawl. No specific instruction."
+  },
+  "vivamelhor": {
+    "website": "vivamelhor.pt",
+    "mandatory_pages": [
+      "/"
+    ],
+    "exclude_pages": [],
+    "instructions": "Default crawl. No specific instruction."
   }
 }
