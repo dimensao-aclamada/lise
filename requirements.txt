@@ -13,3 +13,6 @@ uvicorn[standard]==0.29.0 # ASGI server to run FastAPI with performance extras
 
 # Environment Variable Management
 python-dotenv==1.0.1
+
+#Encryption
+cryptography==42.0.5
