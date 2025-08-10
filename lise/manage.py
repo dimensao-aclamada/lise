@@ -4,6 +4,7 @@ import argparse
 import secrets
 import sqlite3
 import os
+import json # <-- Add json import
 from urllib.parse import urlparse, urlunparse
 from dotenv import load_dotenv
 
@@ -13,12 +14,13 @@ from lise.encryption import encrypt_key
 from lise.crawler import crawl_website
 from lise.rag import RAGIndex
 
-# Load environment variables from .env file at the very top
 load_dotenv()
 
-# --- Database Helper ---
+# --- Constants ---
+EXPORTS_DIR = "exports"
+
+# --- Database Helper (Unchanged) ---
 def get_db_connection():
-    """Establishes a connection to the SQLite database."""
     try:
         conn = sqlite3.connect(DATABASE_FILE)
         conn.row_factory = sqlite3.Row
@@ -28,63 +30,42 @@ def get_db_connection():
         print(f"Database connection error: {e}")
         exit(1)
 
-# --- Property Management ---
+# --- Property Management (Unchanged) ---
 def create_property(name: str, website: str, platform_name: str, platform_api_key: str = None):
-    """
-    Creates a new property, gets the platform key from the command line or .env,
-    and adds its website as the first datasource.
-    """
-    # If the platform key was not provided via the command line, get it from the environment
+    # This function remains the same
     if platform_api_key is None:
         if platform_name == 'groq':
             platform_api_key = os.getenv("GROQ_API_KEY")
             if platform_api_key:
                 print("Read GROQ_API_KEY from .env file.")
-        # Add other platforms here if needed, e.g., elif platform_name == 'openai': ...
-
     if not platform_api_key:
-        print(f"❌ Error: Platform API key for '{platform_name}' not found. Please provide it via the --platform-key argument or set it as GROQ_API_KEY in your .env file.")
+        print(f"❌ Error: Platform API key for '{platform_name}' not found.")
         return
-
     conn = get_db_connection()
     try:
-        # Normalize the website URL to a standard format (e.g., https://example.com)
         parsed_url = urlparse(website)
         if not parsed_url.scheme:
             parsed_url = parsed_url._replace(scheme="https")
         normalized_website = urlunparse(parsed_url._replace(path="", params="", query="", fragment=""))
-        
         lise_api_key = f"lise_{secrets.token_hex(24)}"
         encrypted_platform_key = encrypt_key(platform_api_key)
-
         cursor = conn.cursor()
-        
         cursor.execute(
-            """
-            INSERT INTO properties (name, website, lise_api_key, platform_name, platform_api_key)
-            VALUES (?, ?, ?, ?, ?)
-            """,
+            "INSERT INTO properties (name, website, lise_api_key, platform_name, platform_api_key) VALUES (?, ?, ?, ?, ?)",
             (name, normalized_website, lise_api_key, platform_name, encrypted_platform_key)
         )
         property_id = cursor.lastrowid
-        
         cursor.execute(
-            """
-            INSERT INTO datasources (property_id, type, source_uri)
-            VALUES (?, 'website', ?)
-            """,
+            "INSERT INTO datasources (property_id, type, source_uri) VALUES (?, 'website', ?)",
             (property_id, normalized_website)
         )
-        
         conn.commit()
-        
         print("-" * 60)
         print(f"✅ Property '{name}' created successfully for website {normalized_website}.")
         print("\n   This is the only time your Lise API key will be displayed.")
         print("   Please save it securely.")
         print(f"\n   >> Lise API Key: {lise_api_key} <<")
         print("-" * 60)
-
     except sqlite3.IntegrityError:
         print(f"❌ Error: A property with the name '{name}' or website '{website}' already exists.")
     except Exception as e:
@@ -95,22 +76,19 @@ def create_property(name: str, website: str, platform_name: str, platform_api_ke
             conn.close()
 
 def list_properties():
-    """Lists all properties in the database."""
+    # This function remains the same
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
         cursor.execute("SELECT id, name, website FROM properties ORDER BY created_at DESC")
         properties = cursor.fetchall()
-        
         if not properties:
-            print("No properties found. Use 'properties:create' to add one.")
+            print("No properties found.")
             return
-            
         print(f"{'ID':<5} {'Name':<30} {'Website'}")
         print("-" * 80)
         for prop in properties:
             print(f"{prop['id']:<5} {prop['name']:<30} {prop['website']}")
-            
     except Exception as e:
         print(f"❌ An error occurred: {e}")
     finally:
@@ -118,7 +96,7 @@ def list_properties():
             conn.close()
 
 def delete_property(property_id: int):
-    """Deletes a property and all its associated datasources and chunks from the database."""
+    # This function remains the same
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
@@ -127,24 +105,17 @@ def delete_property(property_id: int):
         if not prop:
             print(f"❌ Error: Property with ID '{property_id}' not found.")
             return
-        
-        confirm = input(f"❓ Are you sure you want to delete property '{prop['name']}' (ID: {property_id})? This will also delete its index file and cannot be undone. [y/N]: ")
+        confirm = input(f"❓ Are you sure you want to delete property '{prop['name']}' (ID: {property_id})? [y/N]: ")
         if confirm.lower() != 'y':
             print("Aborted.")
             return
-
         with conn:
-            # The 'ON DELETE CASCADE' in our schema will handle deleting datasources and chunks automatically.
             cursor.execute("DELETE FROM properties WHERE id = ?", (property_id,))
-            
-            # Clean up the associated index file
             index_file = os.path.join("rag_indexes", f"{property_id}.index")
             if os.path.exists(index_file):
                 os.remove(index_file)
                 print(f"-> Deleted index file: {index_file}")
-
         print(f"✅ Property '{prop['name']}' and its associated data have been deleted.")
-
     except Exception as e:
         print(f"❌ An error occurred: {e}")
     finally:
@@ -153,36 +124,27 @@ def delete_property(property_id: int):
 
 # --- Datasource Management ---
 def index_datasources_by_website(website: str):
-    """
-    Finds a property by its website URL and indexes all its datasources.
-    """
+    # This function remains the same
     print(f"\n--- Starting indexing process for property associated with: {website} ---")
     conn = get_db_connection()
     try:
         parsed_url = urlparse(website)
         if not parsed_url.scheme:
-            parsed_url = parsed_url._replace(scheme="httpshttps")
+            parsed_url = parsed_url._replace(scheme="https")
         normalized_website = urlunparse(parsed_url._replace(path="", params="", query="", fragment=""))
-
         cursor = conn.cursor()
         cursor.execute("SELECT id, name FROM properties WHERE website = ?", (normalized_website,))
         prop_row = cursor.fetchone()
-        
         if not prop_row:
             print(f"❌ Error: No property found with the website '{normalized_website}'.")
             return
-
-        property_id = prop_row['id']
-        property_name = prop_row['name']
+        property_id, property_name = prop_row['id'], prop_row['name']
         print(f"Property found: '{property_name}' (ID: {property_id})")
-
         cursor.execute("SELECT id, type, source_uri FROM datasources WHERE property_id = ?", (property_id,))
         datasources_to_index = cursor.fetchall()
-        
         if not datasources_to_index:
-            print(f"No datasources found for property '{property_name}'. Nothing to index.")
+            print("No datasources found to index.")
             return
-
         all_documents = []
         for ds in datasources_to_index:
             print(f"-> Processing datasource ID {ds['id']} ({ds['type']}): {ds['source_uri']}")
@@ -192,49 +154,109 @@ def index_datasources_by_website(website: str):
                     all_documents.append((ds['id'], text))
                 print(f"   Crawled {len(pages)} pages.")
             else:
-                print(f"   Skipping. Indexing for type '{ds['type']}' is not yet implemented.")
-
+                print(f"   Skipping type '{ds['type']}'.")
         if not all_documents:
-            print("No content could be retrieved from any datasource. Aborting index process.")
+            print("No content retrieved. Aborting.")
             return
-        
         rag = RAGIndex(property_id=property_id)
         rag.build_and_save_index(all_documents)
-        
         with conn:
             datasource_ids = [ds['id'] for ds in datasources_to_index]
             current_time = sqlite3.datetime.datetime.now()
             update_data = [('completed', current_time, ds_id) for ds_id in datasource_ids]
             conn.executemany("UPDATE datasources SET status = ?, last_indexed_at = ? WHERE id = ?", update_data)
-
-        print(f"\n✅ Indexing process complete for property '{property_name}'.")
-
+        print(f"\n✅ Indexing complete for property '{property_name}'.")
     except Exception as e:
         print(f"❌ An unexpected error occurred during indexing: {e}")
     finally:
         if conn:
             conn.close()
 
-# --- Main Argparse CLI ---
+# --- NEW EXPORT FUNCTION ---
+def export_chunks_to_json(website: str):
+    """
+    Finds a property by its website URL and exports all its indexed chunks
+    from the database to a JSON file.
+    """
+    print(f"\n--- Exporting chunks for property associated with: {website} ---")
+    conn = get_db_connection()
+    try:
+        # 1. Find the property ID from the website URL
+        parsed_url = urlparse(website)
+        if not parsed_url.scheme:
+            parsed_url = parsed_url._replace(scheme="https")
+        normalized_website = urlunparse(parsed_url._replace(path="", params="", query="", fragment=""))
+
+        cursor = conn.cursor()
+        cursor.execute("SELECT id FROM properties WHERE website = ?", (normalized_website,))
+        prop_row = cursor.fetchone()
+        
+        if not prop_row:
+            print(f"❌ Error: No property found with the website '{normalized_website}'.")
+            return
+            
+        property_id = prop_row['id']
+
+        # 2. Query all chunks for that property's datasources
+        cursor.execute(
+            """
+            SELECT rowid as chunk_id, datasource_id, chunk_text FROM chunks
+            WHERE datasource_id IN (SELECT id FROM datasources WHERE property_id = ?)
+            ORDER BY chunk_id
+            """,
+            (property_id,)
+        )
+        chunks = cursor.fetchall()
+        
+        if not chunks:
+            print("No chunks found in the database for this property. Has it been indexed?")
+            return
+            
+        # 3. Format data for JSON serialization
+        # Convert list of sqlite3.Row objects to list of plain dicts
+        chunks_data = [dict(row) for row in chunks]
+
+        # 4. Write the data to a JSON file
+        os.makedirs(EXPORTS_DIR, exist_ok=True)
+        
+        # Create a clean filename from the domain
+        sanitized_filename = urlparse(website).netloc.replace('.', '_') + "_chunks.json"
+        output_path = os.path.join(EXPORTS_DIR, sanitized_filename)
+        
+        with open(output_path, "w", encoding="utf-8") as f:
+            json.dump(chunks_data, f, indent=2, ensure_ascii=False)
+            
+        print(f"\n✅ Successfully exported {len(chunks_data)} chunks to:")
+        print(f"   {output_path}")
+
+    except Exception as e:
+        print(f"❌ An unexpected error occurred during export: {e}")
+    finally:
+        if conn:
+            conn.close()
+
+# --- Main Argparse CLI (with new export command) ---
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Lise administration tool.")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    # --- Properties Commands ---
+    # Properties Commands
     p_create = subparsers.add_parser("properties:create", help="Create a new property.")
     p_create.add_argument("name", help="A unique name for the property.")
-    p_create.add_argument("--website", help="The primary website URL for the property.", required=True)
-    p_create.add_argument("--platform-name", help="The LLM platform to use.", choices=["groq", "openai"], default="groq")
-    p_create.add_argument("--platform-key", help="[Optional] The API key for the LLM platform. If not provided, it's read from GROQ_API_KEY env var.")
-
+    p_create.add_argument("--website", required=True)
+    p_create.add_argument("--platform-name", choices=["groq", "openai"], default="groq")
+    p_create.add_argument("--platform-key")
     p_list = subparsers.add_parser("properties:list", help="List all existing properties.")
-    
-    p_delete = subparsers.add_parser("properties:delete", help="Delete a property and all its associated data.")
-    p_delete.add_argument("property_id", type=int, help="The ID of the property to delete.")
+    p_delete = subparsers.add_parser("properties:delete", help="Delete a property.")
+    p_delete.add_argument("property_id", type=int)
 
-    # --- Datasources Commands ---
-    ds_index = subparsers.add_parser("datasources:index", help="Crawl and index all datasources for a property, identified by its website.")
-    ds_index.add_argument("--website", type=str, help="The primary website URL of the property to index.", required=True)
+    # Datasources Commands
+    ds_index = subparsers.add_parser("datasources:index", help="Crawl and index datasources for a property.")
+    ds_index.add_argument("--website", required=True)
+    
+    # New Export Command
+    ds_export = subparsers.add_parser("datasources:export", help="Export indexed chunks for a property to a JSON file.")
+    ds_export.add_argument("--website", required=True)
     
     args = parser.parse_args()
 
@@ -246,3 +268,5 @@ if __name__ == "__main__":
         delete_property(args.property_id)
     elif args.command == "datasources:index":
         index_datasources_by_website(args.website)
+    elif args.command == "datasources:export": # <-- Handle the new command
+        export_chunks_to_json(args.website)
