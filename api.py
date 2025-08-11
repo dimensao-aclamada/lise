@@ -51,6 +51,11 @@ app = FastAPI(
     description="An API for chatting with pre-indexed data sources."
 )
 
+# HEALTH CHECK ENDPOINT
+@app.get("/health", status_code=status.HTTP_200_OK)
+async def health_check():
+    return {"status": "ok"}
+
 @app.post("/api/answer", response_model=AnswerResponse)
 async def get_answer(
     request: AnswerRequest,

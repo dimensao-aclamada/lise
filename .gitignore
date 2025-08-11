@@ -7,9 +7,6 @@ __pycache__/
 # Exported data
 exports/
 
-# Database files
-*.db
-
 # C extensions
 *.so
 
