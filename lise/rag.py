@@ -5,6 +5,8 @@ import sqlite3
 import numpy as np
 import faiss
 from sentence_transformers import SentenceTransformer
+import requests
+import json
 from typing import List
 
 from lise.config import CHUNK_SIZE, CHUNK_OVERLAP, EMBED_MODEL, DATABASE_FILE
@@ -25,7 +27,7 @@ def get_db_connection():
         print(f"Database connection error in RAG module: {e}")
         return None
 
-# --- NEW: Smart Text Chunking Function ---
+# --- Smart Text Chunking Function ---
 def recursive_character_splitter(
     text: str,
     chunk_size: int = CHUNK_SIZE,
@@ -68,7 +70,6 @@ def recursive_character_splitter(
             continue
         
         # Add the separator back to the part (except for the first part of the split)
-        # This preserves the original formatting.
         if current_chunk:
              part_to_add = separator_to_use + part
         else:
@@ -105,12 +106,11 @@ def recursive_character_splitter(
         
     return chunks
 
-
 # --- RAG Class ---
 class RAGIndex:
     """
-    A RAG system that interacts with a SQLite database for text chunks
-    and FAISS for vector indexing, on a per-property basis.
+    A RAG system that loads its index from disk and retrieves chunk text
+    from a URL stored in a database.
     """
     def __init__(self, property_id: int, model_name=EMBED_MODEL):
         if not isinstance(property_id, int):
@@ -121,66 +121,24 @@ class RAGIndex:
         self.model = SentenceTransformer(model_name)
         self.index = None
 
-    def build_and_save_index(self, documents: list[tuple[int, str]]):
+    def build_index_from_chunks(self, chunks: List[str]):
         """
-        Builds a FAISS index from documents, using smart chunking, and stores
-        the chunks in the database. This will ERASE and REPLACE any existing
-        index and chunks for the datasources of this property.
+        Takes a list of text chunks, creates a FAISS index from their embeddings,
+        and saves the index file to disk. This method does NOT interact with the database.
         """
-        conn = get_db_connection()
-        if not conn: return
+        if not chunks:
+            print("Cannot build index from empty list of chunks.")
+            return
+            
+        print("-> Encoding text chunks for vector index...")
+        embeddings = self.model.encode(chunks, show_progress_bar=True)
+        embeddings = np.array(embeddings).astype('float32')
 
-        try:
-            with conn: # Use a 'with' statement for automatic transaction handling
-                cursor = conn.cursor()
-                
-                # 1. Clear old chunks for this property's datasources
-                cursor.execute("""
-                    DELETE FROM chunks WHERE datasource_id IN (
-                        SELECT id FROM datasources WHERE property_id = ?
-                    )
-                """, (self.property_id,))
-                print(f"-> Cleared old chunks for property ID {self.property_id}.")
-
-                # 2. Chunk all documents using the new smart splitter
-                all_chunks = []
-                chunk_to_datasource_map = []
-                for datasource_id, text in documents:
-                    chunks = recursive_character_splitter(text)
-                    all_chunks.extend(chunks)
-                    chunk_to_datasource_map.extend([datasource_id] * len(chunks))
-                
-                if not all_chunks:
-                    print("-> No text chunks were generated from the documents. Aborting.")
-                    return
-                
-                # 3. Insert new chunks into the database
-                chunk_data_for_db = [
-                    (datasource_id, chunk_text) 
-                    for datasource_id, chunk_text in zip(chunk_to_datasource_map, all_chunks)
-                ]
-                cursor.executemany(
-                    "INSERT INTO chunks (datasource_id, chunk_text) VALUES (?, ?)",
-                    chunk_data_for_db
-                )
-                print(f"-> Stored {len(all_chunks)} new chunks in the database.")
-
-                # 4. Create and save the FAISS index
-                print("-> Encoding text chunks for vector index... This may take a moment.")
-                embeddings = self.model.encode(all_chunks, show_progress_bar=True)
-                embeddings = np.array(embeddings).astype('float32')
-
-                self.index = faiss.IndexFlatL2(embeddings.shape[1])
-                self.index.add(embeddings)
-                
-                faiss.write_index(self.index, self.index_path)
-                print(f"-> Index built and saved to '{self.index_path}'.")
-
-        except Exception as e:
-            print(f"❌ An error occurred during index building: {e}")
-        finally:
-            if conn:
-                conn.close()
+        self.index = faiss.IndexFlatL2(embeddings.shape[1])
+        self.index.add(embeddings)
+        
+        faiss.write_index(self.index, self.index_path)
+        print(f"-> Index built and saved to '{self.index_path}'.")
 
     def _load_index(self):
         """Loads the FAISS index from disk if it's not already loaded."""
@@ -188,54 +146,55 @@ class RAGIndex:
             if not os.path.exists(self.index_path):
                 raise FileNotFoundError(f"Index file not found for property {self.property_id} at {self.index_path}.")
             self.index = faiss.read_index(self.index_path)
-    
+
     def retrieve(self, query: str, top_k: int = 5) -> list[str]:
         """
-        Searches for a query and retrieves the top-k relevant text chunks from the database.
+        Searches for a query, gets the relevant chunk URLs from the DB,
+        downloads the chunks from that URL, and returns the relevant text.
         """
         self._load_index()
 
+        # 1. Get relevant chunk indices from FAISS (0-based)
         q_emb = self.model.encode([query]).astype('float32')
         _, I = self.index.search(q_emb, top_k)
-        
         faiss_indices = [int(i) for i in I[0]]
-        
+
+        # 2. Get the URL to the chunks JSON file from the database
         conn = get_db_connection()
         if not conn: return []
             
         try:
             cursor = conn.cursor()
+            # For this architecture, we assume one datasource contains the relevant URL.
+            # A more complex system might need to aggregate from multiple datasources.
+            cursor.execute(
+                "SELECT chunks_json_url FROM datasources WHERE property_id = ? AND status = 'completed' AND chunks_json_url IS NOT NULL LIMIT 1",
+                (self.property_id,)
+            )
+            result = cursor.fetchone()
+            if not result or not result['chunks_json_url']:
+                raise ValueError("No indexed chunk URL found for this property in the database.")
             
-            # Find the minimum rowid for this property's chunks to map FAISS index to DB rowid
-            cursor.execute("""
-                SELECT MIN(rowid) FROM chunks WHERE datasource_id IN (
-                    SELECT id FROM datasources WHERE property_id = ?
-                )
-            """, (self.property_id,))
-            min_rowid_result = cursor.fetchone()
-
-            if not min_rowid_result or min_rowid_result[0] is None:
-                return []
+            chunks_url = result['chunks_json_url']
             
-            base_rowid = min_rowid_result[0]
+            # 3. Download the entire list of chunks from the URL
+            print(f"-> Retrieving chunks from {chunks_url}...")
+            if chunks_url.startswith("file://"):
+                # Handle local file URLs
+                with open(chunks_url.replace("file://", ""), "r", encoding="utf-8") as f:
+                    all_chunks = json.load(f)
+            else:
+                # Handle remote http/https URLs
+                response = requests.get(chunks_url, timeout=10)
+                response.raise_for_status()
+                all_chunks = response.json()
             
-            # Correctly map the 0-based FAISS index to the database's sequential rowid
-            db_chunk_ids = [base_rowid + idx for idx in faiss_indices]
-            
-            placeholders = ','.join('?' for _ in db_chunk_ids)
-            sql = f"SELECT chunk_text FROM chunks WHERE rowid IN ({placeholders})"
-            
-            # We need to preserve the order returned by FAISS
-            cursor.execute(sql, db_chunk_ids)
-            results_dict = {row['rowid']: row['chunk_text'] for row in cursor.fetchall()}
-            
-            # Return chunks in the order of relevance found by FAISS
-            ordered_chunks = [results_dict[db_id] for db_id in db_chunk_ids if db_id in results_dict]
-            
-            return ordered_chunks
+            # 4. Return the specific chunks based on the indices found by FAISS
+            retrieved_chunks = [all_chunks[i] for i in faiss_indices if i < len(all_chunks)]
+            return retrieved_chunks
             
         except Exception as e:
-            print(f"❌ An error occurred while retrieving chunks from DB: {e}")
+            print(f"❌ An error occurred during retrieval: {e}")
             return []
         finally:
             if conn:

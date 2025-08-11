@@ -2,13 +2,9 @@
 import sqlite3
 import os
 
-# --- Configuration ---
 DATABASE_FILE = "lise.db"
 
-# --- SQL Statements for Table Creation ---
-
-# SQL for the 'properties' table
-# This table holds the primary client/project information.
+# SQL for the 'properties' table (Unchanged from the previous version)
 SQL_CREATE_PROPERTIES_TABLE = """
 CREATE TABLE IF NOT EXISTS properties (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -21,8 +17,7 @@ CREATE TABLE IF NOT EXISTS properties (
 );
 """
 
-# SQL for the 'datasources' table
-# This table stores all indexable content associated with a property.
+# SQL for the 'datasources' table is MODIFIED for the Remote Chunks architecture
 SQL_CREATE_DATASOURCES_TABLE = """
 CREATE TABLE IF NOT EXISTS datasources (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -30,49 +25,45 @@ CREATE TABLE IF NOT EXISTS datasources (
     type TEXT NOT NULL,
     source_uri TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'pending',
-    last_indexed_at DATETIME,
+    chunks_json_url TEXT, -- <-- ADDED: Will store the URL to the chunks file.
+    index_updated_at DATETIME, -- Renamed from last_indexed_at for clarity
     created_at DATETIME NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (property_id) REFERENCES properties (id) ON DELETE CASCADE
 );
 """
 
-SQL_CREATE_CHUNKS_TABLE = """CREATE TABLE IF NOT EXISTS chunks (
-    id INTEGER PRIMARY KEY,
-    datasource_id INTEGER NOT NULL,
-    chunk_text TEXT NOT NULL,
-    FOREIGN KEY (datasource_id) REFERENCES datasources (id) ON DELETE CASCADE
-);"""
-
 def setup_database():
     """
-    Connects to the SQLite database, creates the necessary tables
-    if they don't already exist, and ensures foreign key support is enabled.
+    Connects to the SQLite database and sets up the tables for the
+    'Remote Chunks' architecture. This involves creating 'properties' and
+    'datasources' tables and ensuring the 'chunks' table does not exist.
     """
     conn = None
     try:
         print(f"Connecting to database: '{DATABASE_FILE}'...")
-        # The connect() function will create the database file if it doesn't exist.
         conn = sqlite3.connect(DATABASE_FILE)
         cursor = conn.cursor()
         print("Connection successful.")
 
-        print("Creating 'properties' table...")
-        cursor.execute(SQL_CREATE_PROPERTIES_TABLE)
-
-        print("Creating 'datasources' table...")
-        cursor.execute(SQL_CREATE_DATASOURCES_TABLE)
-        
-        print("Creating 'chunks' table...")
-        cursor.execute(SQL_CREATE_CHUNKS_TABLE)
-        
-        # It's a good practice to explicitly enable foreign key constraints for each connection.
+        # It's a good practice to explicitly enable foreign key support
         print("Enabling foreign key support...")
         cursor.execute("PRAGMA foreign_keys = ON;")
 
-        # Commit the changes to the database
+        print("Creating 'properties' table (if not exists)...")
+        cursor.execute(SQL_CREATE_PROPERTIES_TABLE)
+
+        print("Creating 'datasources' table with 'chunks_json_url' column (if not exists)...")
+        cursor.execute(SQL_CREATE_DATASOURCES_TABLE)
+        
+        # We explicitly REMOVE the chunks table if it exists from the old schema
+        # This makes the script safely migratable from the previous architecture.
+        print("Dropping old 'chunks' table (if it exists) to finalize migration...")
+        cursor.execute("DROP TABLE IF EXISTS chunks;")
+
+        # Commit all changes to the database
         conn.commit()
         
-        print("\nDatabase setup complete.")
+        print("\nDatabase setup complete for the 'Remote Chunks' architecture.")
         print(f"The database file '{DATABASE_FILE}' is ready.")
 
     except sqlite3.Error as e:
@@ -85,9 +76,7 @@ def setup_database():
 
 
 if __name__ == "__main__":
-    # This block runs only when the script is executed directly
+    # This block allows the script to be run directly
     if os.path.exists(DATABASE_FILE):
-        print(f"Database file '{DATABASE_FILE}' already exists.")
-        # We can still run setup() because of "IF NOT EXISTS",
-        # which makes the script safe to run multiple times.
+        print(f"Database file '{DATABASE_FILE}' already exists. Schema will be updated if necessary.")
     setup_database()
